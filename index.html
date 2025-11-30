@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>🎉 Happy every day ~ 🎆</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+    }
+
+    body {
+      background-color: #111;
+    }
+
+    .fireworks-canvas,
+    .word-container {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .word-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .word-canvas {
+      will-change: transform;
+    }
+
+    /* 自定义音频面板 */
+    #custom-audio-panel {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: rgba(34, 34, 34, 0.95);
+      color: #fff;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      min-width: 300px;
+      display: none;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .time-display {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .progress-container {
+      width: 100%;
+      height: 6px;
+      background: #444;
+      border-radius: 3px;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: #4caf50;
+      border-radius: 3px;
+      width: 0%;
+    }
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .play-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: #4caf50;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .play-btn.paused {
+      background: #f44336;
+    }
+
+    .volume-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .volume-slider {
+      width: 100%;
+      height: 4px;
+      background: #555;
+      border-radius: 2px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="fireworks" class="fireworks-canvas"></canvas>
+  <div class="word-container">
+    <canvas id="word" class="word-canvas"></canvas>
+  </div>
+
+  <!-- 隐藏的 audio 元素 -->
+  <audio id="bgm" src="./music.mp3" preload="auto" loop></audio>
+
+  <!-- 主按钮：文字 "music" -->
+  <button id="toggleMain"
+    style="position:fixed; right:20px; bottom:20px; z-index:10000; width:52px; height:52px; border:none; border-radius:50%; background:#4caf50; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-size:12px; font-weight:bold; user-select:none;">
+    music
+  </button>
+
+  <!-- 播放面板 -->
+  <div id="custom-audio-panel">
+    <div class="panel-header">
+      <div class="time-display">
+        <span id="current-time">0:00</span> / <span id="duration">0:00</span>
+      </div>
+      <button id="close-panel"
+        style="background:none; border:none; color:#aaa; cursor:pointer; font-size:18px;">×</button>
+    </div>
+    <div class="progress-container" id="progress-container">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <div class="controls-row">
+      <button class="play-btn" id="play-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5V19L19 12L8 5Z" />
+        </svg>
+      </button>
+      <div class="volume-control">
+        <!-- 初始 value=0.3 -->
+        <input type="range" min="0" max="1" step="0.01" value="0.3" class="volume-slider" id="volume-slider">
+        <label style="display:flex; align-items:center; gap:4px; white-space:nowrap;">
+          <input type="checkbox" id="mute-checkbox"> 静音
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <script src="./constants.js"></script>
+  <script src="./utils.js"></script>
+  <script src="./imageSrc.js"></script>
+  <script src="./tinycolor.js"></script>
+  <script src="./fireworks.js"></script>
+  <script src="./word.js"></script>
+
+  <script>
+    // ========== 背景音乐控制 ==========
+    (function () {
+      const audio = document.getElementById('bgm');
+      if (!audio) return;
+
+      const toggleMain = document.getElementById('toggleMain');
+      const panel = document.getElementById('custom-audio-panel');
+      const playBtn = document.getElementById('play-btn');
+      const volumeSlider = document.getElementById('volume-slider');
+      const muteCheckbox = document.getElementById('mute-checkbox');
+      const progressBar = document.getElementById('progress-bar');
+      const progressContainer = document.getElementById('progress-container');
+      const currentTimeEl = document.getElementById('current-time');
+      const durationEl = document.getElementById('duration');
+      const closeBtn = document.getElementById('close-panel');
+
+      function formatTime(seconds) {
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+      }
+
+      function updateTime() {
+        currentTimeEl.textContent = formatTime(audio.currentTime);
+        progressBar.style.width = (audio.currentTime / audio.duration * 100) + '%';
+      }
+
+      function updatePlayButton() {
+        const isPaused = audio.paused;
+        playBtn.classList.toggle('paused', !isPaused);
+        playBtn.innerHTML = isPaused ?
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5V19L19 12L8 5Z"/></svg>' :
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+      }
+
+      // ✅ 设置初始音量为 30%
+      const initialVolume = 0.3;
+      audio.volume = initialVolume;
+      volumeSlider.value = initialVolume;
+      audio.muted = muteCheckbox.checked;
+
+      audio.addEventListener('timeupdate', updateTime);
+      audio.addEventListener('loadedmetadata', () => {
+        durationEl.textContent = formatTime(audio.duration);
+      });
+      audio.addEventListener('play', updatePlayButton);
+      audio.addEventListener('pause', updatePlayButton);
+
+      progressContainer.addEventListener('click', (e) => {
+        const rect = progressContainer.getBoundingClientRect();
+        const percent = (e.clientX - rect.left) / rect.width;
+        audio.currentTime = percent * audio.duration;
+      });
+
+      volumeSlider.addEventListener('input', () => {
+        audio.volume = parseFloat(volumeSlider.value);
+        muteCheckbox.checked = false;
+      });
+
+      muteCheckbox.addEventListener('change', () => {
+        audio.muted = muteCheckbox.checked;
+      });
+
+      function togglePlayback() {
+        if (audio.paused) {
+          audio.play().catch(err => {
+            console.warn("Playback failed:", err);
+            alert("请先与页面交互（如点击任意位置）以启用声音。");
+          });
+        } else {
+          audio.pause();
+        }
+      }
+
+      playBtn.addEventListener('click', togglePlayback);
+
+      // 展开/收起逻辑
+      function showPanel() {
+        panel.style.display = 'block';
+        toggleMain.style.display = 'none';
+        updatePlayButton();
+      }
+
+      function hidePanel() {
+        panel.style.display = 'none';
+        toggleMain.style.display = 'flex';
+      }
+
+      toggleMain.addEventListener('click', showPanel);
+      closeBtn.addEventListener('click', hidePanel);
+
+      // 尝试自动播放（不静音）
+      const tryAutoplay = () => {
+        audio.play().catch(err => {
+          console.warn("Auto-play blocked (normal):", err);
+        });
+      };
+
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        tryAutoplay();
+      } else {
+        window.addEventListener('load', tryAutoplay);
+      }
+    })();
+
+    // ========== 烟花动画 ==========
+    {
+      const dom = document.querySelector('#fireworks');
+      const fireworks = new Fireworks(dom, {});
+      fireworks.start();
+
+      dom.addEventListener('click', (event) => {
+        fireworks.createFirework(event.offsetX, event.offsetY);
+      });
+    }
+
+    // ========== 文字烟花 ==========
+    {
+      const dom = document.querySelector('#word');
+      const images = Array.isArray(imageSrc) ? imageSrc : [imageSrc];
+
+      let index = 0;
+      let word = new Word(dom, images[index]);
+      word.start();
+
+      const playNextOnComplete = () => {
+        const timer = setInterval(() => {
+          if (word.isBurnOff()) {
+            clearInterval(timer);
+            index = (index + 1) % images.length;
+            word = new Word(dom, images[index]);
+            word.start();
+            if (images.length > 1) {
+              playNextOnComplete();
+            }
+          }
+        }, 500);
+      };
+
+      if (images.length > 1) {
+        playNextOnComplete();
+      }
+    }
+  </script>
+</body>
+
+</html>
